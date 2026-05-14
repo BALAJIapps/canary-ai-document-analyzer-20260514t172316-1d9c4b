@@ -26,7 +26,10 @@ export async function POST(req: NextRequest) {
     }
 
     const { query, limit } = parsed.data;
-    const pattern = `%${query}%`;
+
+    // Sanitize query for use in ILIKE — escape special chars
+    const safeQuery = query.replace(/[%_\\]/g, "\\$&");
+    const likePattern = `%${safeQuery}%`;
 
     // Try semantic/vector search first, fall back to text search
     let results: Array<{
@@ -73,35 +76,37 @@ export async function POST(req: NextRequest) {
             ORDER BY a.embedding <=> ${JSON.stringify(queryEmbedding)}::vector
             LIMIT ${limit}
           `);
-          results = (vectorResults.rows as typeof results);
+          results = vectorResults.rows as typeof results;
         }
       } catch (vecErr) {
         console.warn("[canary-document-search] vector search failed, falling back to text:", vecErr);
       }
     }
 
-    // If no vector results, fall back to text search using proper binding
+    // If no vector results, fall back to full-text ILIKE search
     if (results.length === 0) {
-      const textResults = await db.execute(sql`
-        SELECT
-          d.id,
-          d.title,
-          d.source_name,
-          d.created_at,
-          a.summary,
-          a.key_points,
-          a.topics,
-          0.5 AS similarity
-        FROM canary_documents d
-        LEFT JOIN canary_document_analyses a ON a.document_id = d.id
-        WHERE
-          d.title ILIKE ${pattern}
-          OR d.document_text ILIKE ${pattern}
-          OR a.summary ILIKE ${pattern}
-        ORDER BY d.created_at DESC
-        LIMIT ${limit}
-      `);
-      results = (textResults.rows as typeof results);
+      const textResults = await db.execute(
+        sql`
+          SELECT
+            d.id,
+            d.title,
+            d.source_name,
+            d.created_at,
+            a.summary,
+            a.key_points,
+            a.topics,
+            0.5 AS similarity
+          FROM canary_documents d
+          LEFT JOIN canary_document_analyses a ON a.document_id = d.id
+          WHERE
+            d.title ILIKE ${likePattern}
+            OR d.document_text ILIKE ${likePattern}
+            OR a.summary ILIKE ${likePattern}
+          ORDER BY d.created_at DESC
+          LIMIT ${limit}
+        `
+      );
+      results = textResults.rows as typeof results;
     }
 
     return NextResponse.json({
@@ -114,7 +119,10 @@ export async function POST(req: NextRequest) {
         summary: r.summary,
         key_points: r.key_points,
         topics: r.topics,
-        similarity: typeof r.similarity === "number" ? r.similarity : parseFloat(String(r.similarity)),
+        similarity:
+          typeof r.similarity === "number"
+            ? r.similarity
+            : parseFloat(String(r.similarity)),
         created_at: r.created_at,
       })),
     });
