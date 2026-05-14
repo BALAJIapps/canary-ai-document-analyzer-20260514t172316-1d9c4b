@@ -3,7 +3,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /* DocAnalyzer — OpenAI-inspired design system */
-/* Calm, near-monochrome with teal accent */
+/* Calm, near-monochrome with teal accent + editorial serif display */
 
 :root {
   /* Base surfaces */
@@ -26,7 +26,7 @@
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.44 0 0);  /* #6e6e6e slate */
 
-  /* Accent = teal */
+  /* Accent */
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.24 0 0);
 
@@ -37,10 +37,15 @@
   /* Borders */
   --border: oklch(0.914 0 0);           /* #e5e5e5 hairline */
   --input: oklch(0.914 0 0);
-  --ring: oklch(0.914 0 0);
+  --ring: oklch(0.648 0.137 167.1);     /* teal focus ring */
 
   /* Radius — soft 8-12px per OpenAI system */
   --radius: 0.75rem;
+
+  /* Typography tokens */
+  --font-display: "Source Serif 4", "Source Serif Pro", Georgia, "Times New Roman", serif;
+  --font-body: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
 }
 
 .dark {
@@ -62,7 +67,7 @@
   --destructive-foreground: oklch(0.985 0 0);
   --border: oklch(0.2 0 0);
   --input: oklch(0.2 0 0);
-  --ring: oklch(0.44 0 0);
+  --ring: oklch(0.648 0.137 167.1);
 }
 
 @theme inline {
@@ -91,6 +96,9 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* Load Source Serif 4 from Google Fonts for editorial display */
+@import url("https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap");
+
 @layer base {
   * {
     border-color: var(--border);
@@ -98,14 +106,40 @@
   body {
     background-color: var(--background);
     color: var(--foreground);
-    font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-family: var(--font-body);
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
     line-height: 1.65;
   }
-  h1, h2, h3 {
-    line-height: 1.15;
+
+  /* Editorial display font for primary headlines */
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    line-height: 1.12;
+    letter-spacing: -0.02em;
+  }
+
+  h2, h3 {
+    font-family: var(--font-body);
+    line-height: 1.2;
     letter-spacing: -0.01em;
     font-weight: 600;
+  }
+}
+
+/* Button micro-interaction: depress on active */
+@layer components {
+  button:not(:disabled):active,
+  [role="button"]:not(:disabled):active {
+    transform: translateY(1px);
+  }
+
+  /* Teal focus ring on inputs */
+  input:focus-visible,
+  textarea:focus-visible {
+    outline: none;
+    border-color: #10a37f;
+    box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.12);
   }
 }
