@@ -36,10 +36,37 @@ export async function POST(req: NextRequest) {
     }
 
     const { query, limit } = parsed.data;
-    const safeQuery = query.replace(/[%_\\]/g, "\\$&");
-    const likePattern = `%${safeQuery}%`;
 
-    // Always run text search as reliable baseline
+    // Build word-level ILIKE conditions so multi-word queries match documents
+    // containing ANY of the significant words (length > 2 to skip stop words)
+    const words = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 2)
+      .slice(0, 10);
+
+    // Fall back to whole query if all words are too short
+    const searchTerms = words.length > 0 ? words : [query];
+
+    // Build parameterized WHERE clause: each term generates 3 ILIKE conditions
+    // joined with OR. Params: $1...$N are like patterns, $N+1 is limit.
+    const params: (string | number)[] = [];
+    const termConditions: string[] = [];
+
+    for (const term of searchTerms) {
+      const safeterm = term.replace(/[%_\\]/g, "\\$&");
+      const pattern = `%${safeterm}%`;
+      const p = params.length + 1;
+      params.push(pattern);
+      termConditions.push(
+        `(d.title ILIKE $${p} OR d.document_text ILIKE $${p} OR a.summary ILIKE $${p})`
+      );
+    }
+
+    params.push(limit);
+    const limitParam = params.length;
+    const whereClause = termConditions.join(" OR ");
+
     const textRes = await pool.query<SearchRow>(
       `SELECT
         d.id,
@@ -52,13 +79,10 @@ export async function POST(req: NextRequest) {
         0.5 AS similarity
       FROM canary_documents d
       LEFT JOIN canary_document_analyses a ON a.document_id = d.id
-      WHERE
-        d.title ILIKE $1
-        OR d.document_text ILIKE $1
-        OR a.summary ILIKE $1
+      WHERE ${whereClause}
       ORDER BY d.created_at DESC
-      LIMIT $2`,
-      [likePattern, limit]
+      LIMIT $${limitParam}`,
+      params
     );
     let results: SearchRow[] = textRes.rows;
 
@@ -68,7 +92,6 @@ export async function POST(req: NextRequest) {
 
     if (aiToken && aiGatewayUrl) {
       try {
-        // Check if any embeddings exist first
         const embCheckRes = await pool.query(
           `SELECT COUNT(*) AS cnt FROM canary_document_analyses WHERE embedding IS NOT NULL`
         );
