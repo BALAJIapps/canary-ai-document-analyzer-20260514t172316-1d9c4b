@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/db";
-import { sql } from "drizzle-orm";
+import { pool } from "@/db";
 import { z } from "zod";
 import { openai } from "@/lib/ai";
 
@@ -37,13 +36,11 @@ export async function POST(req: NextRequest) {
     }
 
     const { query, limit } = parsed.data;
-
-    // Always run text search first as the reliable baseline
-    const textPool = db.$client as import("pg").Pool;
     const safeQuery = query.replace(/[%_\\]/g, "\\$&");
     const likePattern = `%${safeQuery}%`;
 
-    const textRes = await textPool.query<SearchRow>(
+    // Always run text search as reliable baseline
+    const textRes = await pool.query<SearchRow>(
       `SELECT
         d.id,
         d.title,
@@ -65,28 +62,27 @@ export async function POST(req: NextRequest) {
     );
     let results: SearchRow[] = textRes.rows;
 
-    // Try to augment with vector search (replaces text results if embeddings exist)
+    // Try to upgrade to vector search if embeddings are stored
     const aiToken = process.env.AI_GATEWAY_TOKEN;
     const aiGatewayUrl = process.env.AI_GATEWAY_URL;
 
     if (aiToken && aiGatewayUrl) {
       try {
-        const embeddingResponse = await openai.embeddings.create({
-          model: EMBEDDING_MODEL,
-          input: query.trim(),
-        });
-        const queryEmbedding = embeddingResponse.data[0]?.embedding;
+        // Check if any embeddings exist first
+        const embCheckRes = await pool.query(
+          `SELECT COUNT(*) AS cnt FROM canary_document_analyses WHERE embedding IS NOT NULL`
+        );
+        const hasEmbeddings = parseInt(embCheckRes.rows[0]?.cnt ?? "0") > 0;
 
-        if (queryEmbedding && queryEmbedding.length === EMBEDDING_DIMS) {
-          // Check if any embeddings are stored
-          const embeddingCheckRes = await textPool.query(
-            `SELECT COUNT(*) as cnt FROM canary_document_analyses WHERE embedding IS NOT NULL`
-          );
-          const hasEmbeddings = parseInt(embeddingCheckRes.rows[0]?.cnt ?? "0") > 0;
+        if (hasEmbeddings) {
+          const embeddingResponse = await openai.embeddings.create({
+            model: EMBEDDING_MODEL,
+            input: query.trim(),
+          });
+          const queryEmbedding = embeddingResponse.data[0]?.embedding;
 
-          if (hasEmbeddings) {
-            // Vector similarity search — exact scan (no ANN index on vector(3072))
-            const vecRes = await textPool.query<SearchRow>(
+          if (queryEmbedding && queryEmbedding.length === EMBEDDING_DIMS) {
+            const vecRes = await pool.query<SearchRow>(
               `SELECT
                 d.id,
                 d.title,
@@ -109,7 +105,7 @@ export async function POST(req: NextRequest) {
           }
         }
       } catch (vecErr) {
-        console.warn("[canary-document-search] vector search failed, using text results:", vecErr);
+        console.warn("[canary-document-search] vector search error, using text results:", vecErr);
       }
     }
 
