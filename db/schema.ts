@@ -77,20 +77,39 @@ export const subscription = pgTable("subscription", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-/* Webhook idempotency */
 export const stripeEvent = pgTable("stripe_event", {
-  id: text("id").primaryKey(), // Stripe event.id
+  id: text("id").primaryKey(),
   type: text("type").notNull(),
   processedAt: timestamp("processed_at", { withTimezone: true }).notNull().defaultNow(),
   payload: jsonb("payload").notNull(),
 });
 
-/* Example feature table — specialist agents extend/replace this */
+/* ─────────── Canary: Document Analyzer tables ─────────── */
+
+export const canaryDocument = pgTable("canary_documents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  title: text("title").notNull(),
+  documentText: text("document_text").notNull(),
+  sourceName: text("source_name"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const canaryDocumentAnalysis = pgTable("canary_document_analyses", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  documentId: uuid("document_id")
+    .notNull()
+    .references(() => canaryDocument.id, { onDelete: "cascade" }),
+  summary: text("summary").notNull(),
+  keyPoints: jsonb("key_points").notNull().default([]),
+  topics: jsonb("topics").notNull().default([]),
+  model: text("model").notNull().default("gemini-2.5-flash"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/* Legacy skeleton table — kept so drizzle push does not drop anything */
 export const todo = pgTable("todo", {
   id: uuid("id").primaryKey().defaultRandom(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
   title: text("title").notNull(),
   completed: boolean("completed").notNull().default(false),
   sortOrder: integer("sort_order").notNull().default(0),
@@ -100,4 +119,5 @@ export const todo = pgTable("todo", {
 export type User = typeof user.$inferSelect;
 export type Session = typeof session.$inferSelect;
 export type Subscription = typeof subscription.$inferSelect;
-export type Todo = typeof todo.$inferSelect;
+export type CanaryDocument = typeof canaryDocument.$inferSelect;
+export type CanaryDocumentAnalysis = typeof canaryDocumentAnalysis.$inferSelect;
