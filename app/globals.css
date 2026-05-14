@@ -3,7 +3,6 @@
 @custom-variant dark (&:is(.dark *));
 
 /* DocAnalyzer — OpenAI-inspired design system */
-/* Calm, near-monochrome with teal accent + editorial serif display */
 
 :root {
   --background: oklch(1 0 0);
@@ -26,8 +25,6 @@
   --input: oklch(0.914 0 0);
   --ring: oklch(0.648 0.137 167.1);
   --radius: 0.75rem;
-  --font-display: "Source Serif 4", Georgia, "Times New Roman", serif;
-  --font-body: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 .dark {
@@ -85,40 +82,17 @@
   body {
     background-color: var(--background);
     color: var(--foreground);
-    font-family: var(--font-body);
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
     line-height: 1.65;
   }
-
-  /* Editorial serif for primary display headlines — OpenAI design system */
-  h1 {
-    font-family: var(--font-display);
-    font-weight: 400;
-    line-height: 1.12;
-    letter-spacing: -0.02em;
-  }
-
-  h2, h3 {
-    font-family: var(--font-body);
-    line-height: 1.2;
-    letter-spacing: -0.01em;
-    font-weight: 600;
-  }
 }
 
 @layer components {
-  /* Button micro-interaction: 1px depress on active */
+  /* Button depress micro-interaction */
   button:not(:disabled):active,
   [role="button"]:not(:disabled):active {
     transform: translateY(1px);
-  }
-
-  /* Teal focus ring on inputs */
-  input:focus-visible,
-  textarea:focus-visible {
-    outline: none;
-    border-color: #10a37f;
-    box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.12);
   }
 }
