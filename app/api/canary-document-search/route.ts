@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { query, limit } = parsed.data;
+    const pattern = `%${query}%`;
 
     // Try semantic/vector search first, fall back to text search
     let results: Array<{
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
               a.topics,
               COALESCE(
                 1 - (a.embedding <=> ${JSON.stringify(queryEmbedding)}::vector),
-                0
+                0.5
               ) AS similarity
             FROM canary_documents d
             LEFT JOIN canary_document_analyses a ON a.document_id = d.id
@@ -79,7 +80,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // If no vector results (no embeddings stored yet), fall back to text search
+    // If no vector results, fall back to text search using proper binding
     if (results.length === 0) {
       const textResults = await db.execute(sql`
         SELECT
@@ -94,9 +95,9 @@ export async function POST(req: NextRequest) {
         FROM canary_documents d
         LEFT JOIN canary_document_analyses a ON a.document_id = d.id
         WHERE
-          d.title ILIKE ${'%' + query + '%'}
-          OR d.document_text ILIKE ${'%' + query + '%'}
-          OR a.summary ILIKE ${'%' + query + '%'}
+          d.title ILIKE ${pattern}
+          OR d.document_text ILIKE ${pattern}
+          OR a.summary ILIKE ${pattern}
         ORDER BY d.created_at DESC
         LIMIT ${limit}
       `);
