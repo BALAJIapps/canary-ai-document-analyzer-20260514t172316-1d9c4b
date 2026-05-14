@@ -14,6 +14,17 @@ const SearchSchema = z.object({
   limit: z.number().int().min(1).max(20).optional().default(5),
 });
 
+type SearchRow = {
+  id: string;
+  title: string;
+  source_name: string | null;
+  summary: string | null;
+  key_points: unknown;
+  topics: unknown;
+  similarity: number;
+  created_at: Date;
+};
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -27,28 +38,39 @@ export async function POST(req: NextRequest) {
 
     const { query, limit } = parsed.data;
 
-    // Sanitize query for use in ILIKE — escape special chars
+    // Always run text search first as the reliable baseline
+    const textPool = db.$client as import("pg").Pool;
     const safeQuery = query.replace(/[%_\\]/g, "\\$&");
     const likePattern = `%${safeQuery}%`;
 
-    // Try semantic/vector search first, fall back to text search
-    let results: Array<{
-      id: string;
-      title: string;
-      source_name: string | null;
-      summary: string | null;
-      key_points: unknown;
-      topics: unknown;
-      similarity: number;
-      created_at: Date;
-    }> = [];
+    const textRes = await textPool.query<SearchRow>(
+      `SELECT
+        d.id,
+        d.title,
+        d.source_name,
+        d.created_at,
+        a.summary,
+        a.key_points,
+        a.topics,
+        0.5 AS similarity
+      FROM canary_documents d
+      LEFT JOIN canary_document_analyses a ON a.document_id = d.id
+      WHERE
+        d.title ILIKE $1
+        OR d.document_text ILIKE $1
+        OR a.summary ILIKE $1
+      ORDER BY d.created_at DESC
+      LIMIT $2`,
+      [likePattern, limit]
+    );
+    let results: SearchRow[] = textRes.rows;
 
+    // Try to augment with vector search (replaces text results if embeddings exist)
     const aiToken = process.env.AI_GATEWAY_TOKEN;
     const aiGatewayUrl = process.env.AI_GATEWAY_URL;
 
     if (aiToken && aiGatewayUrl) {
       try {
-        // Generate query embedding
         const embeddingResponse = await openai.embeddings.create({
           model: EMBEDDING_MODEL,
           input: query.trim(),
@@ -56,57 +78,39 @@ export async function POST(req: NextRequest) {
         const queryEmbedding = embeddingResponse.data[0]?.embedding;
 
         if (queryEmbedding && queryEmbedding.length === EMBEDDING_DIMS) {
-          // Vector similarity search — exact scan (no ANN index on vector(3072))
-          const vectorResults = await db.execute(sql`
-            SELECT
-              d.id,
-              d.title,
-              d.source_name,
-              d.created_at,
-              a.summary,
-              a.key_points,
-              a.topics,
-              COALESCE(
-                1 - (a.embedding <=> ${JSON.stringify(queryEmbedding)}::vector),
-                0.5
-              ) AS similarity
-            FROM canary_documents d
-            LEFT JOIN canary_document_analyses a ON a.document_id = d.id
-            WHERE a.embedding IS NOT NULL
-            ORDER BY a.embedding <=> ${JSON.stringify(queryEmbedding)}::vector
-            LIMIT ${limit}
-          `);
-          results = vectorResults.rows as typeof results;
+          // Check if any embeddings are stored
+          const embeddingCheckRes = await textPool.query(
+            `SELECT COUNT(*) as cnt FROM canary_document_analyses WHERE embedding IS NOT NULL`
+          );
+          const hasEmbeddings = parseInt(embeddingCheckRes.rows[0]?.cnt ?? "0") > 0;
+
+          if (hasEmbeddings) {
+            // Vector similarity search — exact scan (no ANN index on vector(3072))
+            const vecRes = await textPool.query<SearchRow>(
+              `SELECT
+                d.id,
+                d.title,
+                d.source_name,
+                d.created_at,
+                a.summary,
+                a.key_points,
+                a.topics,
+                (1 - (a.embedding <=> $1::vector)) AS similarity
+              FROM canary_documents d
+              INNER JOIN canary_document_analyses a ON a.document_id = d.id
+              WHERE a.embedding IS NOT NULL
+              ORDER BY a.embedding <=> $1::vector
+              LIMIT $2`,
+              [JSON.stringify(queryEmbedding), limit]
+            );
+            if (vecRes.rows.length > 0) {
+              results = vecRes.rows;
+            }
+          }
         }
       } catch (vecErr) {
-        console.warn("[canary-document-search] vector search failed, falling back to text:", vecErr);
+        console.warn("[canary-document-search] vector search failed, using text results:", vecErr);
       }
-    }
-
-    // If no vector results, fall back to full-text ILIKE search
-    if (results.length === 0) {
-      const textResults = await db.execute(
-        sql`
-          SELECT
-            d.id,
-            d.title,
-            d.source_name,
-            d.created_at,
-            a.summary,
-            a.key_points,
-            a.topics,
-            0.5 AS similarity
-          FROM canary_documents d
-          LEFT JOIN canary_document_analyses a ON a.document_id = d.id
-          WHERE
-            d.title ILIKE ${likePattern}
-            OR d.document_text ILIKE ${likePattern}
-            OR a.summary ILIKE ${likePattern}
-          ORDER BY d.created_at DESC
-          LIMIT ${limit}
-        `
-      );
-      results = textResults.rows as typeof results;
     }
 
     return NextResponse.json({
