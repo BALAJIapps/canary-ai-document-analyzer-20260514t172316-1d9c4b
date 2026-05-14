@@ -2,49 +2,67 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* DocAnalyzer — OpenAI-inspired design system */
+/* Calm, near-monochrome with teal accent */
+
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  /* Base surfaces */
+  --background: oklch(1 0 0);           /* #ffffff */
+  --foreground: oklch(0.08 0 0);        /* ~#0d0d0d ink black */
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.08 0 0);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.08 0 0);
+
+  /* Primary = ink black for CTAs */
+  --primary: oklch(0.08 0 0);           /* #0d0d0d */
+  --primary-foreground: oklch(1 0 0);
+
+  /* Secondary = pearl surface */
+  --secondary: oklch(0.97 0 0);         /* #f5f5f5 pearl */
+  --secondary-foreground: oklch(0.24 0 0);
+
+  /* Muted surfaces */
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --muted-foreground: oklch(0.44 0 0);  /* #6e6e6e slate */
+
+  /* Accent = teal */
   --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --accent-foreground: oklch(0.24 0 0);
+
+  /* Destructive */
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --radius: 0.625rem;
+
+  /* Borders */
+  --border: oklch(0.914 0 0);           /* #e5e5e5 hairline */
+  --input: oklch(0.914 0 0);
+  --ring: oklch(0.914 0 0);
+
+  /* Radius — soft 8-12px per OpenAI system */
+  --radius: 0.75rem;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
+  --background: oklch(0.08 0 0);
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
+  --card: oklch(0.13 0 0);
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
+  --popover: oklch(0.13 0 0);
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
+  --primary-foreground: oklch(0.08 0 0);
+  --secondary: oklch(0.18 0 0);
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
+  --muted: oklch(0.18 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.18 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.396 0.141 25.723);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.556 0 0);
+  --border: oklch(0.2 0 0);
+  --input: oklch(0.2 0 0);
+  --ring: oklch(0.44 0 0);
 }
 
 @theme inline {
@@ -80,6 +98,14 @@
   body {
     background-color: var(--background);
     color: var(--foreground);
+    font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.65;
+  }
+  h1, h2, h3 {
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    font-weight: 600;
   }
 }
