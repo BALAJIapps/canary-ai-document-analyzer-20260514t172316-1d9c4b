@@ -1,20 +1,10 @@
 /**
- * File upload & storage via multiple providers.
+ * File upload and storage via multiple providers.
  *
- * Supports three backends (user picks via env var):
- *   1. Uploadthing — easiest, free tier 2GB
- *   2. Cloudflare R2 — cheapest at scale, S3-compatible
- *   3. Vercel Blob — simplest if deploying to Vercel
- *
- * The generated app gets a /api/upload route and a useUpload() hook
- * that work with any backend. The coder agent picks the backend based
- * on the user's prompt or defaults to Uploadthing.
- *
- * Usage in generated apps:
- *   import { uploadFile, getFileUrl, deleteFile } from "@/lib/storage";
+ * This helper avoids passing Node Buffer / Uint8Array<ArrayBufferLike>
+ * directly to DOM Blob/fetch types. TypeScript 5.9+ and Node 26 can otherwise
+ * reject those values because the underlying buffer may be SharedArrayBuffer.
  */
-
-// ── Provider detection ────────────────────────────────────────────
 
 type StorageProvider = "uploadthing" | "r2" | "vercel-blob" | "local";
 
@@ -25,7 +15,18 @@ function detectProvider(): StorageProvider {
   return "local";
 }
 
-// ── Unified interface ─────────────────────────────────────────────
+async function toArrayBuffer(file: File | Buffer): Promise<ArrayBuffer> {
+  if (file instanceof Buffer) {
+    const ab = new ArrayBuffer(file.byteLength);
+    new Uint8Array(ab).set(new Uint8Array(file.buffer, file.byteOffset, file.byteLength));
+    return ab;
+  }
+  return (file as File).arrayBuffer();
+}
+
+function toBlob(ab: ArrayBuffer, contentType: string): Blob {
+  return new Blob([ab], { type: contentType });
+}
 
 export interface UploadResult {
   url: string;
@@ -62,7 +63,7 @@ export async function getFileUrl(key: string): Promise<string> {
     case "r2":
       return `${process.env.R2_PUBLIC_URL || ""}/${key}`;
     case "vercel-blob":
-      return key; // Vercel Blob URLs are the key
+      return key;
     case "local":
       return `/uploads/${key}`;
   }
@@ -78,11 +79,8 @@ export async function deleteFile(key: string): Promise<void> {
     case "vercel-blob":
       await deleteFromVercelBlob(key);
       break;
-    // uploadthing and local: deletion is more complex, skip for now
   }
 }
-
-// ── Uploadthing ───────────────────────────────────────────────────
 
 async function uploadToUploadthing(
   file: File | Buffer,
@@ -92,11 +90,9 @@ async function uploadToUploadthing(
   const secret = process.env.UPLOADTHING_SECRET;
   if (!secret) throw new Error("UPLOADTHING_SECRET not set");
 
-  // Uploadthing uses their SDK, but we can also use their REST API
+  const ab = await toArrayBuffer(file);
+  const blob = toBlob(ab, options?.contentType || "application/octet-stream");
   const formData = new FormData();
-  const blob = file instanceof Buffer
-    ? new Blob([file], { type: options?.contentType || "application/octet-stream" })
-    : file;
   formData.append("file", blob, filename);
 
   const resp = await fetch("https://uploadthing.com/api/uploadFiles", {
@@ -112,12 +108,10 @@ async function uploadToUploadthing(
   return {
     url: result.url || result.fileUrl,
     key: result.key || result.fileKey,
-    size: result.size || 0,
+    size: result.size || ab.byteLength,
     name: filename,
   };
 }
-
-// ── Cloudflare R2 (S3-compatible) ─────────────────────────────────
 
 async function uploadToR2(
   file: File | Buffer,
@@ -130,23 +124,17 @@ async function uploadToR2(
   const endpoint = process.env.R2_ENDPOINT;
 
   if (!accessKeyId || !secretAccessKey || !bucket || !endpoint) {
-    throw new Error("R2 env vars not set (R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, R2_ENDPOINT)");
+    throw new Error("R2 env vars not set");
   }
 
   const key = options?.folder ? `${options.folder}/${filename}` : filename;
-  const body = file instanceof Buffer ? file : Buffer.from(await file.arrayBuffer());
+  const ab = await toArrayBuffer(file);
+  const blob = toBlob(ab, options?.contentType || "application/octet-stream");
 
-  // Use S3-compatible PUT
-  const url = `${endpoint}/${bucket}/${key}`;
-  const resp = await fetch(url, {
+  const resp = await fetch(`${endpoint}/${bucket}/${key}`, {
     method: "PUT",
-    headers: {
-      "content-type": options?.contentType || "application/octet-stream",
-      // Note: real S3 auth requires AWS Signature V4.
-      // For a generated app, using the @aws-sdk/client-s3 is more reliable.
-      // This is a simplified version for the template.
-    },
-    body,
+    headers: { "content-type": options?.contentType || "application/octet-stream" },
+    body: blob,
   });
 
   if (!resp.ok) throw new Error(`R2 upload failed: ${resp.status}`);
@@ -154,7 +142,7 @@ async function uploadToR2(
   return {
     url: `${process.env.R2_PUBLIC_URL || endpoint}/${key}`,
     key,
-    size: body.length,
+    size: ab.byteLength,
     name: filename,
   };
 }
@@ -165,8 +153,6 @@ async function deleteFromR2(key: string): Promise<void> {
   await fetch(`${endpoint}/${bucket}/${key}`, { method: "DELETE" });
 }
 
-// ── Vercel Blob ───────────────────────────────────────────────────
-
 async function uploadToVercelBlob(
   file: File | Buffer,
   filename: string,
@@ -175,7 +161,8 @@ async function uploadToVercelBlob(
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   if (!token) throw new Error("BLOB_READ_WRITE_TOKEN not set");
 
-  const body = file instanceof Buffer ? file : Buffer.from(await file.arrayBuffer());
+  const ab = await toArrayBuffer(file);
+  const blob = toBlob(ab, options?.contentType || "application/octet-stream");
   const pathname = options?.folder ? `${options.folder}/${filename}` : filename;
 
   const resp = await fetch(`https://blob.vercel-storage.com/${pathname}`, {
@@ -184,7 +171,7 @@ async function uploadToVercelBlob(
       authorization: `Bearer ${token}`,
       "x-content-type": options?.contentType || "application/octet-stream",
     },
-    body,
+    body: blob,
   });
 
   if (!resp.ok) throw new Error(`Vercel Blob error: ${resp.status}`);
@@ -193,7 +180,7 @@ async function uploadToVercelBlob(
   return {
     url: data.url,
     key: data.pathname || pathname,
-    size: body.length,
+    size: ab.byteLength,
     name: filename,
   };
 }
@@ -207,8 +194,6 @@ async function deleteFromVercelBlob(key: string): Promise<void> {
   });
 }
 
-// ── Local filesystem (dev fallback) ───────────────────────────────
-
 async function uploadToLocal(
   file: File | Buffer,
   filename: string,
@@ -221,14 +206,14 @@ async function uploadToLocal(
   await fs.mkdir(dir, { recursive: true });
 
   const filepath = path.join(dir, filename);
-  const body = file instanceof Buffer ? file : Buffer.from(await file.arrayBuffer());
-  await fs.writeFile(filepath, body);
+  const ab = await toArrayBuffer(file);
+  await fs.writeFile(filepath, Buffer.from(ab));
 
   const key = options?.folder ? `${options.folder}/${filename}` : filename;
   return {
     url: `/uploads/${key}`,
     key,
-    size: body.length,
+    size: ab.byteLength,
     name: filename,
   };
 }
