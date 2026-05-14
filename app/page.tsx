@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 
 interface Document {
   id: string;
@@ -291,7 +290,7 @@ export default function Home() {
           <div className="grid gap-6 md:grid-cols-[1fr_1fr]">
             <div>
               <p className="mb-2 text-xs font-medium uppercase tracking-[0.08em] text-[#9b9b9b]">The old way</p>
-              <p className="text-[15px] leading-relaxed text-muted-foreground">Read through 20-page contracts manually. Miss the liability clause on page 14. Search by keyword, find false positives, miss context.</p>
+              <p className="text-[15px] leading-relaxed text-muted-foreground">Read through 20-page contracts manually. Miss the liability clause on page 14. Search by keyword, find false positives, miss context.</p>
             </div>
             <div className="border-l border-[#10a37f]/30 pl-6">
               <p className="mb-2 text-xs font-medium uppercase tracking-[0.08em] text-[#10a37f]">With DocAnalyzer</p>
